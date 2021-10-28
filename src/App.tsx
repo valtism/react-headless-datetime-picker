@@ -1,8 +1,12 @@
+// https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/datetime-local
+// https://www.w3.org/TR/wai-aria-practices-1.2/examples/dialog-modal/datepicker-dialog.html
+
 import React, { useRef, useState } from "react";
+import { useDateTimePicker } from "./useDateTimePicker";
 
 export default function App(): JSX.Element {
   const [dt, setDt] = useState(new Date());
-  const [dateTime, setDateTime] = useState("2021-01-01T01:00");
+  const [dateTime, setDateTime] = useState(new Date().toISOString());
 
   return (
     <div className="flex flex-col">
@@ -10,6 +14,7 @@ export default function App(): JSX.Element {
         type="datetime-local"
         value={dateTime}
         onChange={(e) => {
+          // console.log(e.target.value);
           setDateTime(e.target.value);
         }}
       />
@@ -33,184 +38,417 @@ function Input({
   locales = [...navigator.languages],
   options,
 }: InputProps) {
-  const { getInputProps, getPartProps, parts, highlightedIndex } =
-    useComposableDatepicker(value, onChange, step, locales, options);
+  const {
+    getInputProps,
+    getPartProps,
+    getModalProps,
+    getPreviousYearButtonProps,
+    getPreviousMonthButtonProps,
+    getNextMonthButtonProps,
+    getNextYearButtonProps,
+    parts,
+    highlightedIndex,
+  } = useDateTimePicker({ value, onChange, step, locales, options });
 
   return (
-    <div {...getInputProps()}>
-      {parts.map((part, i) => {
-        const isHighlighted = highlightedIndex === i;
-        return (
-          <span
-            key={i}
-            className={`${isHighlighted ? "bg-gray-200" : ""}`}
-            {...getPartProps({
-              part: part,
-              index: i,
-            })}
-          >
-            {part.value}
-          </span>
-        );
-      })}
+    <div className="relative">
+      <div {...getInputProps()}>
+        {parts.map((part, i) => {
+          const isHighlighted = highlightedIndex === i;
+          return (
+            <span
+              key={i}
+              className={`${isHighlighted ? "bg-gray-200" : ""}`}
+              {...getPartProps({
+                part: part,
+                index: i,
+              })}
+            >
+              {part.value}
+            </span>
+          );
+        })}
+      </div>
+      <div className="p-4 bg-white">
+        <div {...getModalProps()}>
+          <div className="flex items-center">
+            <button {...getPreviousYearButtonProps()}>
+              <span>{"<<-"}</span>
+            </button>
+            <button {...getPreviousMonthButtonProps()}>
+              <span>{"<-"}</span>
+            </button>
+            <button {...getNextMonthButtonProps()}>
+              <span>{"->"}</span>
+            </button>
+            <button
+              {...getNextYearButtonProps({ className: "focus:ring" })}
+              className="focus:ring"
+            >
+              <span>{"->>"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-interface GetPartProps {
-  part: Intl.DateTimeFormatPart;
-  index: number;
-}
+// CanFocusExtendedRange prop
 
-type HTMLAttributesWithRef = React.HTMLAttributes<HTMLElement> & {
-  ref?: (element: HTMLElement | null) => void;
-};
-
-function useComposableDatepicker(
-  value: Date,
-  onChange?: (value: Date) => void,
-  step?: number,
-  locales?: string | string[],
-  options?: Intl.DateTimeFormatOptions
-) {
-  const date = new Date(value);
-
-  // TODO: Show these depending on step value
-  const formatterOptions: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    ...options,
-  };
-  const formatter = new Intl.DateTimeFormat(locales, formatterOptions);
-  const parts = formatter.formatToParts(date);
-  const partEls = useRef<HTMLElement[]>([]);
-  const focusablePartIndexes = parts
-    .map((part, i) => (part.type !== "literal" ? i : null))
-    .filter((part): part is number => part !== null);
-
-  function focusNextPart() {
-    const i = focusablePartIndexes.indexOf(highlightedIndex);
-    const isLastIndex = i === focusablePartIndexes.length;
-
-    if (!isLastIndex) {
-      partEls.current[focusablePartIndexes[i + 1]].focus();
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-  function focusPrevPart() {
-    const i = focusablePartIndexes.indexOf(highlightedIndex);
-    const isFirstIndex = i === 0;
-
-    if (!isFirstIndex) {
-      partEls.current[focusablePartIndexes[i - 1]].focus();
-      return true;
-    } else {
-      return false;
-    }
-  }
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-
-  function getInputProps(): React.HTMLAttributes<HTMLElement> {
-    // TODO: Maybe rename - can't be place on an input
-    return {
-      tabIndex: -1,
-      onBlur: () => setHighlightedIndex(-1),
-    };
-  }
-
-  function getPartProps({ part, index }: GetPartProps): HTMLAttributesWithRef {
-    if (part.type === "literal") return {};
-
-    return {
-      ref: (element) => {
-        if (!element) return;
-        partEls.current[index] = element;
-      },
-      tabIndex: 0,
-      onFocus: () => setHighlightedIndex(index),
-      onKeyDown: (e) => {
-        switch (e.key) {
-          case "ArrowRight": {
-            e.preventDefault();
-            focusNextPart();
-            break;
-          }
-          case "ArrowLeft":
-            e.preventDefault();
-            focusPrevPart();
-            break;
-          case "ArrowUp": {
-            e.preventDefault();
-            const newDate = adjustDate(value, part.type, 1);
-            onChange?.(newDate);
-            break;
-          }
-          case "ArrowDown": {
-            e.preventDefault();
-            const newDate = adjustDate(value, part.type, -1);
-            onChange?.(newDate);
-            break;
-          }
-        }
-      },
-    };
-  }
-
-  return {
-    // Prop getter
-    getInputProps,
-    getPartProps,
-    // Stuff
-    parts,
-    // Data
-    highlightedIndex,
-  };
-}
-
-function adjustDate(
-  date: Date,
-  type: Intl.DateTimeFormatPartTypes | undefined,
-  change: number
-): Date {
-  const newDate = new Date(date);
-  switch (type) {
-    case "day":
-      newDate.setDate(date.getDate() + change);
-      break;
-    case "month":
-      newDate.setMonth(date.getMonth() + change);
-      break;
-    case "year":
-      newDate.setFullYear(date.getFullYear() + change);
-      break;
-    case "hour":
-      newDate.setHours(date.getHours() + change);
-      break;
-    case "minute":
-      newDate.setMinutes(date.getMinutes() + change);
-      break;
-    case "second":
-      newDate.setSeconds(date.getSeconds() + change);
-      break;
-    case "dayPeriod":
-      // Special case, just toggle
-      newDate.setHours((date.getHours() + 12) % 24);
-      break;
-    case "weekday":
-      newDate.setDate(date.getDate() + change);
-      break;
-    case "era":
-      // TODO
-      break;
-    default:
-      return date;
-  }
-  return newDate;
+/**
+ * modal
+ * prev year
+ * prev month
+ * next month
+ * next year
+ * table
+ * day
+ * - date
+ * - inSelectedMonth?
+ * - isSelected
+ * - isHighlighted? or just focus state?
+ * cancel
+ * ok
+ * message
+ */
+function Calendar() {
+  return (
+    <div
+      id="id-datepicker-1"
+      className="bg-white"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="id-dialog-label"
+    >
+      <div className="header">
+        <button type="button" className="prevYear" aria-label="previous year">
+          <span className="fas fa-angle-double-left fa-lg">{"<<"}</span>
+        </button>
+        <button type="button" className="prevMonth" aria-label="previous month">
+          <span className="fas fa-angle-left fa-lg">{" <"}</span>
+        </button>
+        <h2 id="id-dialog-label" className="monthYear" aria-live="polite">
+          Month Year
+        </h2>
+        <button type="button" className="nextMonth" aria-label="next month">
+          <span className="fas fa-angle-right fa-lg"></span>
+        </button>
+        <button type="button" className="nextYear" aria-label="next year">
+          <span className="fas fa-angle-double-right fa-lg"></span>
+        </button>
+      </div>
+      <table
+        id="myDatepickerGrid"
+        className="dates"
+        role="grid"
+        aria-labelledby="id-dialog-label"
+      >
+        <thead>
+          <tr>
+            <th scope="col" abbr="Sunday">
+              Su
+            </th>
+            <th scope="col" abbr="Monday">
+              Mo
+            </th>
+            <th scope="col" abbr="Tuesday">
+              Tu
+            </th>
+            <th scope="col" abbr="Wednesday">
+              We
+            </th>
+            <th scope="col" abbr="Thursday">
+              Th
+            </th>
+            <th scope="col" abbr="Friday">
+              Fr
+            </th>
+            <th scope="col" abbr="Saturday">
+              Sa
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                25
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                26
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                27
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                28
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                29
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                30
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                1
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                2
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                3
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                4
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                5
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                6
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                7
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                8
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                9
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                10
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                11
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                12
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                13
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton">
+                14
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                15
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                16
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                17
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                18
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                19
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                20
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                21
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                22
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                23
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                24
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                25
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                26
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                27
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                28
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                29
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                30
+              </button>
+            </td>
+            <td className="dateCell">
+              <button type="button" className="dateButton" tabIndex={-1}>
+                31
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                1
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                2
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                3
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                4
+              </button>
+            </td>
+            <td className="dateCell">
+              <button
+                type="button"
+                className="dateButton disabled"
+                tabIndex={-1}
+              >
+                5
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="dialogButtonGroup">
+        <button type="button" className="dialogButton" value="cancel">
+          Cancel
+        </button>
+        <button type="button" className="dialogButton" value="ok">
+          OK
+        </button>
+      </div>
+      <div className="message" aria-live="polite">
+        Test
+      </div>
+    </div>
+  );
 }
